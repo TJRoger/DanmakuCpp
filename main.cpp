@@ -13,7 +13,12 @@
 #include <ctime>
 
 
-using std::string, std::cout, std::endl, std::vector, std::stack;
+using std::string;
+using std::cout;
+using std::endl;
+using std::vector;
+using std::stack;
+using namespace Poco;
 using Poco::Net::HTTPClientSession;
 using Poco::Net::HTTPRequest;
 using Poco::Net::HTTPResponse;
@@ -148,6 +153,71 @@ int rcvPack(WebSocket *&ws, int size) {
     return flags;
 }
 
+std::string convertFromStreamToString(std::istream &in){
+    std::string ret;
+
+    char buffer[4096];
+
+    while (in.read(buffer, sizeof(buffer))){
+        ret.append(buffer, sizeof(buffer));
+    }
+
+    ret.append(buffer, in.gcount());
+
+    return ret;
+}
+
+int doRequest(Poco::Net::HTTPClientSession& session,
+        Poco::Net::HTTPRequest& request,
+        Poco::Net::HTTPResponse& response)
+{
+    session.sendRequest(request);
+    std::istream& rs = session.receiveResponse(response);
+    std::cout <<"status: " << response.getStatus() << " reason: " << response.getReason() << std::endl;
+    if (response.getStatus() != Poco::Net::HTTPResponse::HTTP_UNAUTHORIZED)
+    {
+        std::string rawJson = convertFromStreamToString(rs);
+        
+        int index{-1};
+        int roomId;
+        if ((index = rawJson.find("{\"") != -1)) {
+            vector<string> jsons = cleanString(rawJson);
+            for (auto &json : jsons) {
+                if (!reader.parse(json, root)) {
+                    cout << "JSON解析出错，错误: " << reader.getFormattedErrorMessages() << endl;
+                } else {
+                    roomId = root["data"]["room_id"].asInt();
+                    std::cout << "解析到真实房间号" << roomId << endl;
+                }
+            }
+
+        }
+            
+        cout << "rawJson: " << rawJson << endl;
+        return roomId;
+    }
+    else
+    {
+        //it went wrong ?
+        return -1;
+    }
+}
+
+int getRoomInfo(std::string roomId) {
+    std::string uri = "https://api.live.bilibili.com/xlive/web-room/v1/index/getRoomPlayInfo?room_id="+roomId;
+//    Poco::URI uri1("https://api.live.bilibili.com/xlive/web-room/v1/index/getRoomPlayInfo?room_id=6");
+//    Poco::URI uri = Poco::URI(url);
+//    std::string path(uri.getPathAndQuery());
+//    if (path.empty()) path="/";
+
+    HTTPClientSession session("api.live.bilibili.com", 80);
+    HTTPRequest request(HTTPRequest::HTTP_GET, "/xlive/web-room/v1/index/getRoomPlayInfo?room_id="+roomId, HTTPMessage::HTTP_1_1);
+    HTTPResponse response;
+
+    return doRequest(session, request, response);
+}
+
+
 
 int main(int args, char **argv) {
     std::string roomId;
@@ -155,6 +225,13 @@ int main(int args, char **argv) {
     std::cout << "请输入房间号,默认'22247501'(y):";
     std::cin >> input;
     roomId = (input == "y" || input == "Y") ? "22247501" : input;
+    
+    int realRoomId = getRoomInfo(roomId);
+    if (realRoomId > 0) {
+        std::cout << "真实房间号：" << realRoomId << endl;
+        roomId = std::to_string(realRoomId);
+        std::cout << "连接：" << roomId << endl;
+    }
     HTTPClientSession cs("broadcastlv.chat.bilibili.com", 2244);
     HTTPRequest request(HTTPRequest::HTTP_GET, "/sub", HTTPMessage::HTTP_1_1);
     request.set("origin", "http://broadcastlv.chat.bilibili.com");
