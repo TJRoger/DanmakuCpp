@@ -1,5 +1,5 @@
-# BilibiliDanMu
-基于C++的WebSocket的bilibili弹幕获取助手
+# DanmakuCpp
+基于C++的WebSocket实现bilibili弹幕实时获取显示
 
 ## 依赖
 `Poco`: WebSocket 支持
